@@ -216,7 +216,12 @@ curl -fsS 'http://127.0.0.1:9200/fluentd-*/_search?q=log-check&pretty'
 
 ## 8. CI/CD
 
-GitHub Actions выполняет два автоматических контроля: Kubernetes YAML validation через kubeconform и ShellCheck для deploy/smoke/destroy scripts.
+GitHub Actions запускается на `push`, `pull_request` и вручную через `workflow_dispatch`. Pipeline состоит из двух jobs:
+
+1. `validate` — проверяет Kubernetes manifests через kubeconform и shell-скрипты через ShellCheck.
+2. `integration` — создаёт локальный Kubernetes-кластер `kind`, разворачивает весь stack через `./scripts/deploy.sh` и запускает `./scripts/smoke-test.sh`.
+
+Для GitHub Actions smoke-тест использует `kubectl port-forward`, поэтому не зависит от доступности внутреннего IP kind-ноды с runner. При падении integration job автоматически выводит состояние pods/events и логи основных компонентов.
 
 ## 9. Удаление
 

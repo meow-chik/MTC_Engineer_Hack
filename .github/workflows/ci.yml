@@ -1,14 +1,25 @@
-name: validate
+name: CI
 
 on:
   push:
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  yaml:
+  validate:
+    name: Validate manifests and scripts
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Validate Kubernetes manifests
         uses: docker://ghcr.io/yannh/kubeconform:v0.7.0
         with:
@@ -17,7 +28,64 @@ jobs:
             -strict -ignore-missing-schemas -summary
             k8s/app/app.yaml k8s/gateway/gateway.yaml
             k8s/monitoring/monitoring.yaml k8s/logging/logging.yaml
-      - name: Shellcheck
+
+      - name: ShellCheck
         uses: ludeeus/action-shellcheck@2.0.0
         with:
           scandir: './scripts'
+
+  integration:
+    name: Deploy to kind and run smoke tests
+    runs-on: ubuntu-latest
+    needs: validate
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1.12.0
+        with:
+          cluster_name: mts-hack
+          config: cluster/kind/kind.yaml
+          wait: 120s
+
+      - name: Prepare node for OpenSearch
+        run: |
+          docker exec mts-hack-control-plane sysctl -w vm.max_map_count=262144
+
+      - name: Show cluster information
+        run: |
+          kubectl cluster-info
+          kubectl get nodes -o wide
+
+      - name: Deploy stack
+        run: ./scripts/deploy.sh
+
+      - name: Run smoke tests
+        env:
+          SMOKE_USE_PORT_FORWARD: "true"
+        run: ./scripts/smoke-test.sh
+
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          echo '=== Nodes ==='
+          kubectl get nodes -o wide || true
+          echo '=== Pods ==='
+          kubectl get pods -A -o wide || true
+          echo '=== Events ==='
+          kubectl get events -A --sort-by=.lastTimestamp | tail -200 || true
+          echo '=== Gateway ==='
+          kubectl describe gateway -n app public-gateway || true
+          echo '=== Envoy Gateway logs ==='
+          kubectl logs -n envoy-gateway-system deployment/envoy-gateway --tail=200 || true
+          echo '=== Application logs ==='
+          kubectl logs -n app deployment/web --all-containers=true --tail=200 || true
+          echo '=== Prometheus logs ==='
+          kubectl logs -n monitoring deployment/prometheus --tail=200 || true
+          echo '=== OpenSearch logs ==='
+          kubectl logs -n logging statefulset/opensearch --tail=200 || true
+          echo '=== Fluentd logs ==='
+          kubectl logs -n logging daemonset/fluentd --tail=200 || true
