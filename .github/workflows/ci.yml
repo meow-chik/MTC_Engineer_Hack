@@ -61,12 +61,12 @@ jobs:
           kubectl get nodes -o wide
 
       - name: Deploy stack
-        run: ./scripts/deploy.sh
+        run: bash ./scripts/deploy.sh
 
       - name: Run smoke tests
         env:
           SMOKE_USE_PORT_FORWARD: "true"
-        run: ./scripts/smoke-test.sh
+        run: bash ./scripts/smoke-test.sh
 
       - name: Diagnostics on failure
         if: failure()
