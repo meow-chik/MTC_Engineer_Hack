@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="650" viewBox="0 0 1200 650">
+<style>text{font-family:Arial,sans-serif;fill:#111}.box{fill:#f7f7f7;stroke:#222;stroke-width:2}.arrow{stroke:#222;stroke-width:2;marker-end:url(#a)}.small{font-size:16px}.title{font-size:26px;font-weight:bold}.label{font-size:19px;font-weight:bold}</style>
+<defs><marker id="a" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L10,3 L0,6 z" fill="#222"/></marker></defs>
+<text x="40" y="45" class="title">MTS ENGINEER HACK — DevOps architecture</text>
+<rect x="40" y="100" width="180" height="70" rx="10" class="box"/><text x="130" y="142" text-anchor="middle" class="label">Client</text>
+<rect x="290" y="80" width="250" height="110" rx="10" class="box"/><text x="415" y="125" text-anchor="middle" class="label">Envoy Gateway 1.9.2</text><text x="415" y="155" text-anchor="middle" class="small">Gateway API / NodePort</text>
+<rect x="620" y="80" width="240" height="110" rx="10" class="box"/><text x="740" y="125" text-anchor="middle" class="label">Nginx 1.29</text><text x="740" y="155" text-anchor="middle" class="small">Deployment + Service</text>
+<line x1="220" y1="135" x2="290" y2="135" class="arrow"/><line x1="540" y1="135" x2="620" y2="135" class="arrow"/>
+<rect x="80" y="290" width="300" height="130" rx="10" class="box"/><text x="230" y="335" text-anchor="middle" class="label">Fluentd 1.19.3</text><text x="230" y="365" text-anchor="middle" class="small">DaemonSet → CRI logs</text><text x="230" y="390" text-anchor="middle" class="small">→ OpenSearch</text>
+<rect x="470" y="290" width="260" height="130" rx="10" class="box"/><text x="600" y="335" text-anchor="middle" class="label">Prometheus 3.15</text><text x="600" y="365" text-anchor="middle" class="small">scrapes kube-state-metrics</text><text x="600" y="390" text-anchor="middle" class="small">PromQL verification</text>
+<rect x="820" y="290" width="260" height="130" rx="10" class="box"/><text x="950" y="335" text-anchor="middle" class="label">OpenSearch 3.9</text><text x="950" y="365" text-anchor="middle" class="small">log storage</text><text x="950" y="390" text-anchor="middle" class="small">fluentd-* indices</text>
+<line x1="740" y1="190" x2="230" y2="290" class="arrow"/><line x1="740" y1="190" x2="950" y2="290" class="arrow"/>
+<line x1="730" y1="355" x2="820" y2="355" class="arrow"/>
+<rect x="390" y="500" width="420" height="80" rx="10" class="box"/><text x="600" y="535" text-anchor="middle" class="label">Kubernetes 1.36.5 / kubeadm</text><text x="600" y="560" text-anchor="middle" class="small">Ubuntu 24.04 + containerd + Flannel</text>
+<line x1="600" y1="420" x2="600" y2="500" class="arrow"/>
+</svg>
