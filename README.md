@@ -1,6 +1,6 @@
 # MTS ENGINEER HACK — Kubernetes / DevOps
 
-Репродуцируемое решение кейса: Kubernetes + Gateway API + Prometheus + Fluentd + OpenSearch.
+Воспроизводимое решение DevOps-кейса: Kubernetes, Gateway API, мониторинг Prometheus и централизованный сбор логов Fluentd -> OpenSearch.
 
 ## Архитектура
 
@@ -11,61 +11,105 @@ Client
   v
 Envoy Gateway 1.9.2
   |
-  | Gateway API: Gateway -> HTTPRoute
+  | Gateway API: GatewayClass -> Gateway -> HTTPRoute
   v
-Nginx 1.29-alpine
+Service web
+  |
+  v
+Nginx 1.29-alpine (2 replicas)
   |
   +--> stdout/stderr --> /var/log/containers/*.log --> Fluentd DaemonSet --> OpenSearch 3.9.0
   |
-  +--> Kubernetes metrics (через kube-state-metrics) --> Prometheus 3.15.0
+  +--> Kubernetes state --> kube-state-metrics 2.20.0 --> Prometheus 3.15.0
 ```
 
-### Выбранные версии
+Основной сценарий развёртывания рассчитан на Ubuntu 24.04 LTS и Kubernetes, созданный через kubeadm. Для локальной и CI-проверки также предусмотрен kind.
 
-| Компонент | Версия |
+## Используемые технологии и версии
+
+| Компонент | Версия / вариант |
 |---|---|
-| OS | Ubuntu 24.04 LTS |
+| ОС | Ubuntu 24.04 LTS |
 | Kubernetes | 1.36.5 |
-| containerd | 2.x из Ubuntu repository |
+| Способ создания основного кластера | kubeadm |
+| Container runtime | containerd 2.x из Ubuntu repository |
 | CNI | Flannel 0.27.4 |
 | Gateway API implementation | Envoy Gateway 1.9.2 |
+| Демонстрационное приложение | Nginx 1.29-alpine |
 | Prometheus | 3.15.0 |
 | kube-state-metrics | 2.20.0 |
 | Fluentd Kubernetes DaemonSet | 1.19.3-1.1 |
-| OpenSearch | 3.9.0 |
-| Demo app | Nginx 1.29-alpine |
+| Хранилище логов | OpenSearch 3.9.0 |
+| CI | GitHub Actions |
+| Валидация manifests | kubeconform |
+| Проверка shell-скриптов | ShellCheck |
 
-Версии Kubernetes и компонентов зафиксированы, чтобы повторный запуск не получил неожиданное обновление.
+Версии ключевых компонентов зафиксированы, чтобы повторный запуск не зависел от неожиданных обновлений.
 
 ## Что реализовано
 
-- Kubernetes-кластер, ориентированный на kubeadm и Ubuntu 24.04.
-- Nginx как демонстрационное приложение; ответ `Hello from MTS ENGINEER HACK!`.
-- Access/error logs Nginx идут в stdout/stderr и попадают в стандартные container logs Kubernetes.
-- Envoy Gateway 1.9.2.
-- GatewayClass, Gateway, HTTPRoute.
-- Envoy Service переводится в NodePort, поэтому решение не требует cloud LoadBalancer.
-- Prometheus 3.15.0 собирает метрики kube-state-metrics и собственные метрики.
-- Fluentd собирает CRI/container logs со всех узлов и отправляет их в OpenSearch.
-- OpenSearch используется как локальное хранилище логов для демонстрации.
-- Idempotent deployment через shell-скрипты и `kubectl apply`.
-- Smoke-тесты проверяют приложение, Gateway API, Prometheus target и наличие логов в OpenSearch.
-- CI выполняет YAML validation и shellcheck.
+- single-node Kubernetes-кластер через kubeadm для Ubuntu 24.04;
+- дополнительный kind-кластер для CI и быстрой локальной проверки;
+- Nginx с двумя репликами и однозначным HTTP-ответом `Hello from MTS ENGINEER HACK!`;
+- readiness/liveness probes и resource requests/limits;
+- access/error logs Nginx в stdout/stderr;
+- Envoy Gateway и ресурсы Gateway API: `GatewayClass`, `Gateway`, `HTTPRoute`;
+- публикация Gateway через NodePort без зависимости от облачного LoadBalancer;
+- Prometheus и kube-state-metrics;
+- Fluentd как DaemonSet для чтения CRI/container logs;
+- OpenSearch как централизованное хранилище логов;
+- повторяемый deploy через shell-скрипты и `kubectl apply`;
+- smoke-тесты приложения, Gateway API, мониторинга и логирования;
+- GitHub Actions с validation и integration jobs;
+- диагностический вывод состояния pods/events/logs при падении integration job.
 
 ## Требования к среде
 
-Минимально рекомендуется для single-node demo:
+Для основного single-node стенда рекомендуется:
 
-- Ubuntu 24.04 LTS
-- 4 vCPU
-- 8 GB RAM
-- 30 GB свободного диска
-- root/sudo
-- интернет-доступ к публичным container registries и GitHub releases
+- Ubuntu 24.04 LTS;
+- 4 vCPU;
+- 8 GB RAM;
+- 30 GB свободного места;
+- root/sudo;
+- доступ в интернет к публичным container registries и GitHub releases.
 
-Решение также содержит конфигурацию kind для быстрого локального теста, но основной путь сдачи — kubeadm.
+## Структура репозитория
 
-## 1. Подготовка Kubernetes через kubeadm
+```text
+.
+├── cluster/
+│   ├── kubeadm/
+│   │   └── install.sh       # создание Kubernetes на Ubuntu 24.04
+│   └── kind/
+│       └── kind.yaml        # локальный/CI кластер
+├── k8s/
+│   ├── app/                 # Nginx Deployment, Service, ConfigMap
+│   ├── gateway/             # EnvoyProxy, GatewayClass, Gateway, HTTPRoute
+│   ├── monitoring/          # Prometheus + kube-state-metrics
+│   └── logging/             # Fluentd + OpenSearch
+├── scripts/
+│   ├── deploy.sh            # развёртывание решения
+│   ├── smoke-test.sh        # автоматическая проверка
+│   └── destroy.sh           # удаление компонентов
+├── docs/
+│   └── architecture.svg
+├── .github/workflows/
+│   └── ci.yml
+├── Makefile
+└── README.md
+```
+
+## Быстрый запуск
+
+### 1. Клонировать репозиторий
+
+```bash
+git clone https://github.com/meow-chik/MTC_Engineer_Hack.git
+cd MTC_Engineer_Hack
+```
+
+### 2. Создать Kubernetes через kubeadm
 
 На чистой Ubuntu 24.04:
 
@@ -73,70 +117,95 @@ Nginx 1.29-alpine
 sudo ./cluster/kubeadm/install.sh
 ```
 
-Скрипт:
+Скрипт автоматически:
 
 1. отключает swap;
-2. устанавливает containerd;
-3. включает systemd cgroup driver;
-4. устанавливает kubeadm/kubelet/kubectl 1.36.5;
-5. выполняет `kubeadm init`;
-6. устанавливает Flannel;
-7. снимает control-plane taint для single-node demo;
-8. настраивает kubeconfig текущего пользователя.
+2. загружает необходимые kernel modules;
+3. настраивает sysctl для Kubernetes;
+4. устанавливает и настраивает containerd;
+5. устанавливает kubeadm/kubelet/kubectl 1.36.5;
+6. выполняет `kubeadm init`;
+7. устанавливает Flannel 0.27.4;
+8. снимает control-plane taint для single-node стенда;
+9. настраивает kubeconfig.
 
-Если кластер уже создан, этот шаг можно пропустить.
+Проверка:
 
-## 2. Установка решения
+```bash
+kubectl get nodes -o wide
+```
+
+Узел должен иметь статус `Ready`.
+
+> Если Kubernetes-кластер уже существует, этап kubeadm можно пропустить.
+
+## Развёртывание решения
 
 ```bash
 ./scripts/deploy.sh
 ```
 
-Скрипт устанавливает Envoy Gateway, затем application, monitoring и logging stack.
+или через Makefile:
 
-Envoy Gateway ставится из фиксированного release `v1.9.2` через официальный `install.yaml`; Gateway API CRD входят в этот manifest.
+```bash
+make deploy
+```
 
-## 3. Проверка приложения через Gateway API
+Deploy-скрипт устанавливает Envoy Gateway, затем применяет manifests приложения, Gateway API, мониторинга и логирования и ожидает готовности основных компонентов.
+
+Проверка состояния:
+
+```bash
+kubectl get pods -A
+```
+
+Основные pods должны перейти в `Running`/`Ready`.
+
+## Проверка приложения через Gateway API
+
+Самый быстрый вариант:
 
 ```bash
 ./scripts/smoke-test.sh
 ```
 
-Или вручную:
+Ручная проверка:
 
 ```bash
 export ENVOY_SERVICE=$(kubectl -n envoy-gateway-system get svc \
   -l gateway.envoyproxy.io/owning-gateway-name=public-gateway \
   -o jsonpath='{.items[0].metadata.name}')
+
 export NODE_PORT=$(kubectl -n envoy-gateway-system get svc "$ENVOY_SERVICE" \
   -o jsonpath='{.spec.ports[?(@.name=="http")].nodePort}')
-export NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
 
-curl -fsS -H 'Host: app.mts-hack.local' "http://${NODE_IP}:${NODE_PORT}/"
+export NODE_IP=$(kubectl get nodes \
+  -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
+
+curl -fsS -H 'Host: app.mts-hack.local' \
+  "http://${NODE_IP}:${NODE_PORT}/"
 ```
 
-Ожидается:
+Ожидаемый ответ:
 
 ```text
 Hello from MTS ENGINEER HACK!
 ```
 
-Для среды без возможности достучаться до NodePort снаружи можно использовать port-forward:
+Если NodePort недоступен напрямую из клиентской среды, можно использовать port-forward:
 
 ```bash
-ENVOY_SERVICE=$(kubectl -n envoy-gateway-system get svc \
-  -l gateway.envoyproxy.io/owning-gateway-name=public-gateway \
-  -o jsonpath='{.items[0].metadata.name}')
-kubectl -n envoy-gateway-system port-forward "svc/${ENVOY_SERVICE}" 8888:80
+kubectl -n envoy-gateway-system port-forward \
+  "svc/${ENVOY_SERVICE}" 8888:80
 ```
 
-В другом терминале:
+Во втором терминале:
 
 ```bash
 curl -fsS -H 'Host: app.mts-hack.local' http://127.0.0.1:8888/
 ```
 
-## 4. Проверка Gateway API
+## Проверка Gateway API
 
 ```bash
 kubectl get gatewayclass public-gateway
@@ -145,28 +214,36 @@ kubectl get httproute -n app app-route
 kubectl describe gateway -n app public-gateway
 ```
 
-Ожидается `Accepted=True` и `Programmed=True` у Gateway.
+У Gateway ожидаются условия:
 
-## 5. Проверка Prometheus
+```text
+Accepted=True
+Programmed=True
+```
+
+HTTPRoute должен быть привязан к `public-gateway` и направлять трафик на Service `web`.
+
+## Проверка мониторинга
+
+Prometheus получает собственные метрики и Kubernetes state metrics от kube-state-metrics.
+
+Запустить port-forward:
 
 ```bash
 kubectl -n monitoring port-forward svc/prometheus 9090:9090
 ```
 
-Откройте `http://127.0.0.1:9090` и выполните запрос:
+Открыть:
+
+```text
+http://127.0.0.1:9090
+```
+
+Пример PromQL-запроса:
 
 ```promql
 kube_pod_info
 ```
-
-Проверка target:
-
-```bash
-kubectl -n monitoring exec deploy/prometheus -- \
-  wget -qO- http://127.0.0.1:9090/api/v1/targets
-```
-
-Цель `kube-state-metrics` должна иметь `health="up"`.
 
 Дополнительные запросы:
 
@@ -175,100 +252,151 @@ count(kube_pod_info)
 count(kube_deployment_status_replicas_available)
 ```
 
-## 6. Проверка логирования Fluentd -> OpenSearch
-
-Сначала создайте HTTP-запрос:
+Проверка targets из командной строки:
 
 ```bash
-curl -fsS -H 'Host: app.mts-hack.local' "http://${NODE_IP}:${NODE_PORT}/log-check"
+kubectl -n monitoring exec deploy/prometheus -- \
+  wget -qO- http://127.0.0.1:9090/api/v1/targets
 ```
 
-Проверьте Fluentd:
+Target `kube-state-metrics` должен иметь состояние `health="up"`.
+
+## Проверка логирования
+
+Nginx пишет access/error logs в stdout/stderr. Container runtime сохраняет их в стандартные Kubernetes container logs, Fluentd читает `/var/log/containers/*.log`, добавляет Kubernetes metadata и отправляет записи в OpenSearch.
+
+Сначала создать проверочный HTTP-запрос:
+
+```bash
+curl -fsS -H 'Host: app.mts-hack.local' \
+  "http://${NODE_IP}:${NODE_PORT}/log-check"
+```
+
+Проверить Fluentd:
 
 ```bash
 kubectl -n logging get pods -l app=fluentd
 kubectl -n logging logs daemonset/fluentd --tail=100
 ```
 
-Проверьте OpenSearch:
+Открыть доступ к OpenSearch:
 
 ```bash
 kubectl -n logging port-forward svc/opensearch 9200:9200
 ```
 
-В другом терминале:
+Во втором терминале:
 
 ```bash
 curl -fsS 'http://127.0.0.1:9200/_cat/indices?v'
 curl -fsS 'http://127.0.0.1:9200/fluentd-*/_search?q=log-check&pretty'
 ```
 
-В результате должна присутствовать запись access-log с URI `/log-check`.
+В результатах должна присутствовать access-log запись с URI `/log-check`.
 
-## 7. Повторный запуск
+## Повторный запуск и идемпотентность
 
 ```bash
 ./scripts/deploy.sh
 ./scripts/deploy.sh
 ```
 
-Повторный запуск использует `kubectl apply`, поэтому не должен создавать дубликаты ресурсов или переводить систему в некорректное состояние.
+Kubernetes-ресурсы применяются через `kubectl apply`, поэтому повторный запуск не должен создавать дубликаты или переводить систему в некорректное состояние.
 
-## 8. CI/CD
+## CI/CD
 
-GitHub Actions запускается на `push`, `pull_request` и вручную через `workflow_dispatch`. Pipeline состоит из двух jobs:
+GitHub Actions запускается на `push`, `pull_request` и вручную через `workflow_dispatch`.
 
-1. `validate` — проверяет Kubernetes manifests через kubeconform и shell-скрипты через ShellCheck.
-2. `integration` — создаёт локальный Kubernetes-кластер `kind`, разворачивает весь stack через `./scripts/deploy.sh` и запускает `./scripts/smoke-test.sh`.
+Pipeline содержит два основных этапа:
 
-Для GitHub Actions smoke-тест использует `kubectl port-forward`, поэтому не зависит от доступности внутреннего IP kind-ноды с runner. При падении integration job автоматически выводит состояние pods/events и логи основных компонентов.
+1. **validate**
+   - проверка Kubernetes manifests через kubeconform;
+   - проверка shell-скриптов через ShellCheck.
 
-## 9. Удаление
+2. **integration**
+   - создание временного Kubernetes-кластера kind;
+   - развёртывание полного stack через `scripts/deploy.sh`;
+   - запуск `scripts/smoke-test.sh`;
+   - при ошибке — вывод pods, events и логов ключевых компонентов.
+
+Таким образом CI проверяет не только синтаксис конфигурации, но и фактическое развёртывание решения.
+
+## Локальное тестирование через kind
+
+Для быстрой проверки без kubeadm можно создать kind-кластер с конфигурацией:
+
+```bash
+kind create cluster --config cluster/kind/kind.yaml
+./scripts/deploy.sh
+./scripts/smoke-test.sh
+```
+
+Этот путь используется прежде всего для разработки и CI. Основной сценарий сдачи — kubeadm на Ubuntu 24.04.
+
+## Удаление
+
+Удалить развёрнутые компоненты:
 
 ```bash
 ./scripts/destroy.sh
 ```
 
-Для полного удаления kubeadm-кластера:
+или:
+
+```bash
+make destroy
+```
+
+Полностью сбросить kubeadm-кластер:
 
 ```bash
 sudo kubeadm reset -f
 ```
 
-## Структура репозитория
+## Безопасность
 
-```text
-.
-├── cluster/
-│   ├── kubeadm/          # основной путь создания Kubernetes
-│   └── kind/             # быстрый локальный тест
-├── k8s/
-│   ├── app/              # Nginx Deployment/Service/ConfigMap
-│   ├── gateway/          # EnvoyProxy/GatewayClass/Gateway/HTTPRoute
-│   ├── monitoring/       # Prometheus + kube-state-metrics
-│   └── logging/          # Fluentd + OpenSearch
-├── scripts/
-│   ├── deploy.sh
-│   ├── destroy.sh
-│   └── smoke-test.sh
-├── docs/
-│   └── architecture.svg
-├── .github/workflows/ci.yml
-└── README.md
-```
+- в репозитории отсутствуют реальные пароли, API-токены и приватные ключи;
+- приложение запускается с ограниченными Linux capabilities и `allowPrivilegeEscalation: false`;
+- используются readiness/liveness probes;
+- для workload заданы requests/limits ресурсов;
+- Fluentd использует отдельный ServiceAccount и RBAC;
+- внешние компоненты используют публичные container images и фиксированные версии.
 
-## Безопасность и ограничения
+## Известные ограничения
 
-- Секреты и реальные credentials в репозитории отсутствуют.
-- OpenSearch запускается без security plugin только для демонстрационного single-node стенда; в production необходимы TLS, authentication, persistent volumes и RBAC hardening.
-- Prometheus использует `emptyDir`; для production следует использовать persistent storage и retention policy.
-- Single-node kubeadm не является production HA-конфигурацией.
-- NodePort выбран для воспроизводимости на bare-metal; в production можно заменить его на LoadBalancer/MetalLB.
+- single-node kubeadm предназначен для демонстрации и не является HA production-конфигурацией;
+- NodePort выбран для независимости от cloud provider; в production можно использовать LoadBalancer или MetalLB;
+- OpenSearch запускается без security plugin для упрощения демонстрационного стенда; в production необходимы TLS, authentication и более строгая security-конфигурация;
+- Prometheus использует `emptyDir`, поэтому его локальные данные не сохраняются после пересоздания Pod;
+- OpenSearch развёрнут в single-node режиме;
+- CI-кластер kind существует только во время выполнения GitHub Actions job.
 
 ## Дополнительные возможности
 
-1. Gateway API использует отдельный `GatewayClass` с `EnvoyProxy` parametersRef.
-2. Gateway работает через NodePort без зависимости от cloud provider.
-3. `/healthz` и `/log-check` позволяют делать однозначные smoke-проверки.
-4. CI проверяет Kubernetes YAML и shell scripts.
-5. OpenSearch позволяет не только показать сбор логов, но и сделать запрос по конкретному HTTP URI.
+- отдельный `GatewayClass` с `EnvoyProxy` parametersRef;
+- Gateway API без зависимости от коммерческого облака;
+- две реплики приложения;
+- `/healthz` для readiness/liveness и smoke-проверок;
+- `/log-check` для однозначной проверки централизованного логирования;
+- централизованный поиск логов через OpenSearch;
+- GitHub Actions validation + полноценный integration deploy;
+- автоматический diagnostic dump при ошибке CI.
+
+## Критерий успешной проверки
+
+Решение считается корректно развернутым, если одновременно выполняются следующие условия:
+
+```bash
+kubectl get nodes
+kubectl get pods -A
+kubectl get gateway -n app
+kubectl get httproute -n app
+./scripts/smoke-test.sh
+```
+
+И smoke-тест подтверждает:
+
+- HTTP-запрос через Gateway API возвращает ожидаемый ответ;
+- Gateway имеет корректные статусы;
+- Prometheus видит target kube-state-metrics;
+- запрос `/log-check` появляется в OpenSearch.
