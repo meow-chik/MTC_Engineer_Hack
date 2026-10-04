@@ -4,6 +4,7 @@ metadata:
   name: app
   labels:
     app.kubernetes.io/part-of: mts-engineer-hack
+
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -13,27 +14,38 @@ metadata:
 data:
   nginx.conf: |
     worker_processes auto;
-    events { worker_connections 1024; }
+
+    events {
+      worker_connections 1024;
+    }
+
     http {
       include /etc/nginx/mime.types;
       default_type application/octet-stream;
+
       log_format main '$remote_addr - $remote_user [$time_local] "$request" '
                       '$status $body_bytes_sent "$http_referer" '
                       '"$http_user_agent" "$http_x_forwarded_for"';
+
       access_log /dev/stdout main;
       error_log /dev/stderr warn;
+
       sendfile on;
+
       server {
         listen 8080;
         server_name _;
+
         location = / {
           default_type text/plain;
           return 200 'Hello from MTS ENGINEER HACK!\n';
         }
+
         location = /healthz {
           default_type text/plain;
           return 200 'OK\n';
         }
+
         location = /log-check {
           default_type text/plain;
           add_header X-Log-Check true always;
@@ -41,6 +53,7 @@ data:
         }
       }
     }
+
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -49,21 +62,27 @@ metadata:
   namespace: app
   labels:
     app.kubernetes.io/name: web
+
 spec:
   replicas: 2
+
   strategy:
     type: RollingUpdate
+
   selector:
     matchLabels:
       app.kubernetes.io/name: web
+
   template:
     metadata:
       labels:
         app.kubernetes.io/name: web
+
     spec:
       securityContext:
         seccompProfile:
           type: RuntimeDefault
+
       containers:
         - name: nginx
           image: nginx:1.29-alpine
@@ -79,6 +98,8 @@ spec:
               port: http
             initialDelaySeconds: 2
             periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
 
           livenessProbe:
             httpGet:
@@ -86,6 +107,8 @@ spec:
               port: http
             initialDelaySeconds: 5
             periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
 
           resources:
             requests:
@@ -109,16 +132,25 @@ spec:
               mountPath: /etc/nginx/nginx.conf
               subPath: nginx.conf
               readOnly: true
+
+      volumes:
+        - name: nginx-config
+          configMap:
+            name: nginx-config
+
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: web
   namespace: app
+
 spec:
   type: ClusterIP
+
   selector:
     app.kubernetes.io/name: web
+
   ports:
     - name: http
       port: 80
